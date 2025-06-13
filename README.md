@@ -1,2 +1,3 @@
-# renik
-Renik library
+# Renik
+
+Renik shared library
