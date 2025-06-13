@@ -1,0 +1,12 @@
+[package]
+name = "renik"
+version = "0.1.0"
+edition = "2024"
+description = "🤖 Renik shared library"
+documentation = "https://docs.rs/renik"
+repository = "https://github.com/rttfd/renik"
+license = "MIT"
+keywords = ["renik"]
+authors = ["rttf <contact@rttf.dev>"]
+
+[dependencies]
