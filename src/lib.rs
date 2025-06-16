@@ -6,6 +6,8 @@
 
 #![no_std]
 
+use bytemuck::{Pod, Zeroable};
+
 /// Magic number used to validate Wi-Fi configuration structures
 /// Value: 0x57494649 (ASCII "WIFI")
 const WIFI_CONFIG_MAGIC: u32 = 0x57494649;
@@ -32,19 +34,21 @@ const DEVICE_INFO_MAGIC: u32 = 0x444556;
 /// config.set_credentials(b"MyNetwork", b"password123");
 /// assert!(config.is_valid());
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct WifiConfig {
     /// Magic number for structure validation (0x57494649)
-    magic: u32,
-    /// Actual length of the SSID (0-32 bytes)
-    ssid_len: u8,
-    /// Actual length of the password (0-64 bytes)  
-    password_len: u8,
+    magic: u32, // 4-byte aligned
     /// Fixed-size buffer for network SSID (maximum 32 bytes)
-    ssid: [u8; 32],
+    ssid: [u8; 32], // 1-byte aligned
     /// Fixed-size buffer for network password (maximum 64 bytes)
-    password: [u8; 64],
+    password: [u8; 64], // 1-byte aligned
+    /// Actual length of the SSID (0-32 bytes)
+    ssid_len: u8, // 1-byte aligned
+    /// Actual length of the password (0-64 bytes)
+    password_len: u8, // 1-byte aligned
+    /// Padding to align to a multiple of 4 if needed
+    _padding: [u8; 2], // Ensures no implicit padding
 }
 
 impl Default for WifiConfig {
@@ -59,6 +63,7 @@ impl Default for WifiConfig {
             password_len: 0,
             ssid: [0; 32],
             password: [0; 64],
+            _padding: [0; 2],
         }
     }
 }
@@ -136,15 +141,15 @@ impl WifiConfig {
 /// # Security Note
 /// This structure stores sensitive authentication data. Ensure proper
 /// memory protection and secure storage mechanisms when persisting this data.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct DeviceInfo {
     /// Magic number for structure validation (0x444556)
-    magic: u32,
+    magic: u32, // 4-byte aligned
     /// Unique hardware identifier (16 bytes)
-    hardware_id: [u8; 16],
+    hardware_id: [u8; 16], // 1-byte aligned
     /// Authentication or session token (64 bytes)
-    token: [u8; 64],
+    token: [u8; 64], // 1-byte aligned
 }
 
 impl Default for DeviceInfo {
