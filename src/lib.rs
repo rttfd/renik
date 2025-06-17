@@ -135,7 +135,7 @@ impl WifiConfig {
 /// Device identification and authentication structure
 ///
 /// This structure stores device-specific information including a unique
-/// hardware identifier and an authentication token. It's designed for
+/// hardware identifier and device secret. It's designed for
 /// embedded systems that need to maintain device identity across reboots.
 ///
 /// # Security Note
@@ -148,20 +148,20 @@ pub struct DeviceInfo {
     magic: u32, // 4-byte aligned
     /// Unique hardware identifier (16 bytes)
     hardware_id: [u8; 16], // 1-byte aligned
-    /// Authentication or session token (64 bytes)
-    token: [u8; 64], // 1-byte aligned
+    /// Device secret (64 bytes)
+    secret: [u8; 64], // 1-byte aligned
 }
 
 impl Default for DeviceInfo {
     /// Creates a new device info structure with default values
     ///
     /// The structure is initialized with the correct magic number
-    /// and zeroed identifier/token fields.
+    /// and zeroed identifier/secret fields.
     fn default() -> Self {
         Self {
             magic: DEVICE_INFO_MAGIC,
             hardware_id: [0; 16],
-            token: [0; 64],
+            secret: [0; 64],
         }
     }
 }
@@ -197,24 +197,24 @@ impl DeviceInfo {
         true
     }
 
-    /// Sets the authentication token
+    /// Sets the device secret
     ///
     /// # Parameters  
-    /// - `token`: Authentication token as byte slice (max 64 bytes)
+    /// - `secret`: Device secret as byte slice (max 64 bytes)
     ///
     /// # Returns
-    /// - `true` if token was set successfully
+    /// - `true` if secret was set successfully
     /// - `false` if the parameter exceeds 64 bytes
     ///
     /// # Panics
     /// This method will panic if the slice conversion fails, which should
     /// not happen given the length check.
-    pub fn set_token(&mut self, token: &[u8]) -> bool {
-        if token.len() > 64 {
+    pub fn set_secret(&mut self, secret: &[u8]) -> bool {
+        if secret.len() > 64 {
             return false;
         }
 
-        self.token = token[..token.len()].try_into().unwrap();
+        self.secret = secret[..secret.len()].try_into().unwrap();
         true
     }
 
@@ -226,11 +226,11 @@ impl DeviceInfo {
         &self.hardware_id
     }
 
-    /// Returns the stored authentication token
+    /// Returns the stored device secret
     ///
     /// # Returns
-    /// A reference to the complete 64-byte token array
-    pub fn get_token(&self) -> &[u8] {
-        &self.token
+    /// A reference to the complete 64-byte secret array
+    pub fn get_secret(&self) -> &[u8] {
+        &self.secret
     }
 }
