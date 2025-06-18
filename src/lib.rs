@@ -7,6 +7,7 @@
 #![no_std]
 
 use bytemuck::{Pod, Zeroable};
+use thiserror_no_std::Error;
 
 /// Magic number used to validate Wi-Fi configuration structures
 /// Value: 0x57494649 (ASCII "WIFI")
@@ -17,13 +18,13 @@ const WIFI_CONFIG_MAGIC: u32 = 0x57494649;
 const DEVICE_INFO_MAGIC: u32 = 0x00444556;
 
 /// Error type for configuration-related operations
-#[derive(Debug, snafu::Snafu)]
+#[derive(Debug, Error)]
 pub enum Error {
     /// SSID or password length exceeded the maximum allowed
-    #[snafu(display("SSID or password length exceeded the maximum allowed"))]
+    #[error("SSID or password length exceeded the maximum allowed")]
     CredentialLengthExceeded,
     /// Hardware ID or secret length exceeded the maximum allowed
-    #[snafu(display("Hardware ID or secret length exceeded the maximum allowed"))]
+    #[error("Hardware ID or secret length exceeded the maximum allowed")]
     IdentityLengthExceeded,
 }
 

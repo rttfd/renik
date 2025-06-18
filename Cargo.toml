@@ -1,6 +1,6 @@
 [package]
 name = "renik"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "🤖 Renik shared library"
 documentation = "https://docs.rs/renik"
@@ -11,4 +11,4 @@ authors = ["rttf <contact@rttf.dev>"]
 
 [dependencies]
 bytemuck = { version = "1.23.1", features = ["derive"] }
-snafu = { version = "0.8.6", default-features = false }
+thiserror-no-std = "2.0.2"
