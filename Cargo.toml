@@ -6,7 +6,8 @@ description = "🤖 Renik shared library"
 documentation = "https://docs.rs/renik"
 repository = "https://github.com/rttfd/renik"
 license = "MIT"
-keywords = ["renik"]
+keywords = ["renik", "no_std", "bluetooth"]
+categories = ["no-std", "bluetooth"]
 authors = ["rttf <contact@rttf.dev>"]
 
 [dependencies]
