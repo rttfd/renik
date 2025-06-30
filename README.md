@@ -34,7 +34,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-renik = "0.6.0"
+renik = "0.7.0"
 ```
 
 ### Wi-Fi Configuration
@@ -47,8 +47,8 @@ let config = WifiConfig::new(b"MyNetwork", b"password123")?;
 
 // Validate and use
 if config.is_valid() {
-    println!("SSID: {:?}", config.get_ssid());
-    println!("Password: {:?}", config.get_password());
+    println!("SSID: {:?}", config.ssid());
+    println!("Password: {:?}", config.password());
 }
 ```
 
@@ -99,9 +99,9 @@ device_list.add_device(mouse)?;
 
 // Iterate through devices
 for i in 0..device_list.len() {
-    let device = device_list.get_device(i)?;
+    let device = device_list.device(i)?;
     if device.is_paired() {
-        println!("Found paired device: {:?}", device.get_device_name());
+        println!("Found paired device: {:?}", device.device_name());
     }
 }
 ```
@@ -134,7 +134,7 @@ assert!(connection_state.advance_to_phase(BluetoothConnectionPhase::FullyConnect
 assert!(connection_state.advance_to_phase(BluetoothConnectionPhase::Ready));
 
 // Check current phase and state
-let current_phase = connection_state.get_connection_phase();
+let current_phase = connection_state.connection_phase();
 println!("Current phase: {:?}", current_phase);
 println!("Is connected: {}", current_phase.is_connected());
 println!("Is secure: {}", current_phase.is_secure());
@@ -176,7 +176,7 @@ let device_info = DeviceInfo::new(
 )?;
 
 if device_info.is_valid() {
-    println!("Hardware ID: {:?}", device_info.get_hardware_id());
+    println!("Hardware ID: {:?}", device_info.hardware_id());
 }
 ```
 
@@ -189,11 +189,11 @@ use renik::{BluetoothConnectionParams, BluetoothDeviceInfo};
 
 // Create connection parameters
 let mut params = BluetoothConnectionParams::default();
-params.connection_handle = 0x0001;
-params.connection_interval = 24; // 30ms (24 * 1.25ms)
-params.connection_latency = 0;
-params.supervision_timeout = 200; // 2000ms (200 * 10ms)
-params.rssi = -45; // Good signal strength
+params.set_connection_handle(ConnHandle::new(0x0001));
+params.set_connection_interval(24); // 30ms (24 * 1.25ms)
+params.set_connection_latency(0);
+params.set_supervision_timeout(200); // 2000ms (200 * 10ms)
+params.set_rssi(-45); // Good signal strength
 
 // Update device with connection parameters
 let mac_addr = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
@@ -208,12 +208,12 @@ use renik::{BluetoothSecurityInfo, BluetoothDeviceInfo};
 
 // Create security information
 let mut security = BluetoothSecurityInfo::default();
-security.link_key = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                     0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10];
-security.link_key_valid = 1;
-security.authenticated = 1;
-security.encrypted = 1;
-security.security_level = 4; // High security
+security.set_link_key([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                      0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10]);
+security.set_link_key_valid(1);
+security.set_authenticated(1);
+security.set_encrypted(1);
+security.set_security_level(4); // High security
 
 // Update device with security information
 let mac_addr = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
@@ -260,9 +260,9 @@ let loaded_list: BluetoothDeviceList = unsafe {
 
 // Use loaded device list for reconnection
 for i in 0..loaded_list.len() {
-    let device = loaded_list.get_device(i)?;
+    let device = loaded_list.device(i)?;
     if device.is_paired() && device.supports_auto_reconnect() {
-        println!("Attempting to reconnect to: {:?}", device.get_device_name());
+        println!("Attempting to reconnect to: {:?}", device.device_name());
         // Initiate reconnection...
     }
 }

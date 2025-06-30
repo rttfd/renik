@@ -8,8 +8,8 @@ fn test_device_info_creation() {
     let device = DeviceInfo::new(hardware_id, secret).unwrap();
 
     assert!(device.is_valid());
-    assert_eq!(&device.get_hardware_id()[..hardware_id.len()], hardware_id);
-    assert_eq!(&device.get_secret()[..secret.len()], secret);
+    assert_eq!(&device.hardware_id()[..hardware_id.len()], hardware_id);
+    assert_eq!(&device.secret()[..secret.len()], secret);
 }
 
 #[test]
@@ -17,8 +17,8 @@ fn test_device_info_default() {
     let device = DeviceInfo::default();
 
     assert!(device.is_valid());
-    assert_eq!(device.get_hardware_id(), &[0u8; 32]);
-    assert_eq!(device.get_secret(), &[0u8; 128]);
+    assert_eq!(device.hardware_id(), &[0u8; 32]);
+    assert_eq!(device.secret(), &[0u8; 128]);
 }
 
 #[test]
@@ -51,8 +51,8 @@ fn test_device_info_max_valid_lengths() {
 
     let device = DeviceInfo::new(&max_hardware_id, &max_secret).unwrap();
     assert!(device.is_valid());
-    assert_eq!(device.get_hardware_id(), &max_hardware_id[..]);
-    assert_eq!(device.get_secret(), &max_secret[..]);
+    assert_eq!(device.hardware_id(), &max_hardware_id[..]);
+    assert_eq!(device.secret(), &max_secret[..]);
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn test_device_info_set_hardware_id() {
     let hardware_id = b"RENIK-NEW-DEVICE-ID";
 
     device.set_hardware_id(hardware_id).unwrap();
-    assert_eq!(&device.get_hardware_id()[..hardware_id.len()], hardware_id);
+    assert_eq!(&device.hardware_id()[..hardware_id.len()], hardware_id);
 
     // Test setting hardware ID too long
     let long_hardware_id = vec![b'X'; 33];
@@ -77,7 +77,7 @@ fn test_device_info_set_secret() {
     let secret = b"new_secret_key_for_device_authentication";
 
     device.set_secret(secret).unwrap();
-    assert_eq!(&device.get_secret()[..secret.len()], secret);
+    assert_eq!(&device.secret()[..secret.len()], secret);
 
     // Test setting secret too long
     let long_secret = vec![b'X'; 129];
@@ -93,8 +93,8 @@ fn test_device_info_empty_fields() {
     assert!(device.is_valid());
 
     // The arrays should still be valid, just with empty content at the start
-    assert_eq!(device.get_hardware_id()[0], 0);
-    assert_eq!(device.get_secret()[0], 0);
+    assert_eq!(device.hardware_id()[0], 0);
+    assert_eq!(device.secret()[0], 0);
 }
 
 #[test]
@@ -107,10 +107,10 @@ fn test_device_info_partial_update() {
 
     // Hardware ID should be updated, but secret should remain
     assert_eq!(
-        &device.get_hardware_id()[..new_hardware_id.len()],
+        &device.hardware_id()[..new_hardware_id.len()],
         new_hardware_id
     );
-    assert_eq!(&device.get_secret()[..15], b"original_secret");
+    assert_eq!(&device.secret()[..15], b"original_secret");
 
     // Update only secret
     let new_secret = b"new_secret";
@@ -118,10 +118,10 @@ fn test_device_info_partial_update() {
 
     // Secret should be updated, hardware ID should remain
     assert_eq!(
-        &device.get_hardware_id()[..new_hardware_id.len()],
+        &device.hardware_id()[..new_hardware_id.len()],
         new_hardware_id
     );
-    assert_eq!(&device.get_secret()[..new_secret.len()], new_secret);
+    assert_eq!(&device.secret()[..new_secret.len()], new_secret);
 }
 
 #[test]
@@ -160,8 +160,8 @@ fn test_device_info_binary_data() {
 
     let device = DeviceInfo::new(&hardware_id, &secret).unwrap();
     assert!(device.is_valid());
-    assert_eq!(&device.get_hardware_id()[..hardware_id.len()], &hardware_id);
-    assert_eq!(&device.get_secret()[..secret.len()], &secret);
+    assert_eq!(&device.hardware_id()[..hardware_id.len()], &hardware_id);
+    assert_eq!(&device.secret()[..secret.len()], &secret);
 }
 
 #[test]
@@ -169,12 +169,12 @@ fn test_device_info_boundary_conditions() {
     // Test exactly at the boundary (32 bytes for hardware ID)
     let hardware_id_32_bytes = vec![b'A'; 32];
     let device = DeviceInfo::new(&hardware_id_32_bytes, b"secret").unwrap();
-    assert_eq!(device.get_hardware_id(), &hardware_id_32_bytes[..]);
+    assert_eq!(device.hardware_id(), &hardware_id_32_bytes[..]);
 
     // Test exactly at the boundary (128 bytes for secret)
     let secret_128_bytes = vec![b'B'; 128];
     let device = DeviceInfo::new(b"device", &secret_128_bytes).unwrap();
-    assert_eq!(device.get_secret(), &secret_128_bytes[..]);
+    assert_eq!(device.secret(), &secret_128_bytes[..]);
 
     // Test one byte over the boundary should fail
     let hardware_id_33_bytes = vec![b'C'; 33];
