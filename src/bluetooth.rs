@@ -16,7 +16,7 @@
 //! ## Core Structures
 //!
 //! - [`BluetoothDeviceInfo`]: Complete device information including pairing data
-//! - [`BluetoothDeviceList`]: Container for multiple device configurations
+//! - [`BluetoothDeviceList`]: Container for multiple device configurations (max 10)
 //! - [`BluetoothConnectionState`]: Real-time connection tracking with FSM
 //! - [`ConnHandle`]: Type-safe connection handle wrapper
 //! - [`BluetoothConnectionPhase`]: FSM phases for connection lifecycle
@@ -26,24 +26,28 @@
 //! The Bluetooth connection FSM supports 13 distinct phases:
 //!
 //! ```text
-//! Idle → Discovery → Connecting → Connected → Authenticating → SettingUpEncryption
-//!   ↑        ↓           ↓           ↓             ↓                    ↓
-//!   └─────────────────────────────────────────────────────────────→ Failed
-//!                                   ↓             ↓                    ↓
-//!                            ServiceDiscovery → FullyConnected → Ready → Maintaining
-//!                                   ↓             ↓           ↓        ↓
-//!                                   └─────────→ Disconnecting ←────────┘
-//!                                                    ↓
-//!                            Reconnecting ←──────────┘
-//!                                   ↓
-//!                            Connecting (retry)
+//! 0  Idle                → 1  Discovery
+//! 1  Discovery           → 2  Connecting
+//! 2  Connecting          → 3  Connected | 11 Failed
+//! 3  Connected           → 4  Authenticating | 7 ServiceDiscovery | 12 Disconnecting
+//! 4  Authenticating      → 5  SettingUpEncryption | 11 Failed | 12 Disconnecting
+//! 5  SettingUpEncryption → 6  FullyConnected | 11 Failed | 12 Disconnecting
+//! 6  FullyConnected      → 7  ServiceDiscovery | 8 Ready | 12 Disconnecting
+//! 7  ServiceDiscovery    → 8  Ready | 11 Failed | 12 Disconnecting
+//! 8  Ready               → 9  Maintaining | 12 Disconnecting
+//! 9  Maintaining         → 10 Reconnecting | 12 Disconnecting
+//! 10 Reconnecting        → 2  Connecting | 11 Failed
+//! 11 Failed              → 10 Reconnecting
+//! 12 Disconnecting       → 0  Idle (only allowed transition)
 //! ```
+//!
+//! See `BluetoothConnectionPhase` and `BluetoothConnectionState::is_valid_transition` for details.
 //!
 //! ## Memory Layout
 //!
 //! All structures use `#[repr(C)]` layout for reliable serialization:
 //! - Predictable field ordering
-//! - No hidden padding
+//! - No hidden padding (except explicit padding fields)
 //! - Cross-platform compatibility
 //! - Suitable for persistent storage
 //!
@@ -99,7 +103,7 @@ const BLUETOOTH_CONNECTION_STATE_MAGIC: u32 = 0x4254_4353;
 
 /// Bluetooth device list structure
 ///
-/// This structure represents a list of Bluetooth devices, including their
+/// This structure represents a list of up to 10 Bluetooth devices, including their
 /// configuration and connection status. It's used for managing multiple
 /// Bluetooth devices in embedded systems.
 ///
@@ -110,6 +114,16 @@ const BLUETOOTH_CONNECTION_STATE_MAGIC: u32 = 0x4254_4353;
 /// # Security Note
 /// This structure may store sensitive pairing data. Ensure proper
 /// memory protection and secure storage mechanisms when persisting this data.
+///
+/// # Fields
+/// - `magic`: Structure validation (0x42544C53)
+/// - `devices`: Array of up to 10 device configurations
+/// - `device_count`: Number of valid devices in the list
+/// - `_padding`: Ensures 4-byte alignment
+///
+/// # Errors
+/// - `Error::DeviceListFull` if adding more than 10 devices
+/// - `Error::IndexOutOfBounds` for invalid indices
 ///
 /// # Examples
 /// ```
@@ -125,7 +139,7 @@ const BLUETOOTH_CONNECTION_STATE_MAGIC: u32 = 0x4254_4353;
 /// assert_eq!(device_list.len(), 2);
 /// ```
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct BluetoothDeviceList {
     /// Magic number for structure validation (0x42544C53)
     magic: u32, // 4-byte aligned
@@ -212,7 +226,7 @@ impl BluetoothDeviceList {
     ///
     /// # Errors
     /// Returns `Error::IndexOutOfBounds` if the specified index is not valid.
-    pub fn get_device(&self, index: usize) -> Result<&BluetoothDeviceInfo, Error> {
+    pub fn device(&self, index: usize) -> Result<&BluetoothDeviceInfo, Error> {
         if index >= self.device_count as usize {
             return Err(Error::IndexOutOfBounds);
         }
@@ -255,6 +269,14 @@ impl BluetoothDeviceList {
 /// This structure may store sensitive connection data. Ensure proper
 /// memory protection and secure storage mechanisms when persisting this data.
 ///
+/// # Fields
+/// - `magic`: Structure validation (0x42544353)
+/// - `device_config`: Bluetooth device configuration
+/// - `connection_flags`: Bitfield for connection/authentication
+/// - `link_quality`: RSSI/LQI/etc.
+/// - `connection_phase`: Current FSM phase (see `BluetoothConnectionPhase`)
+/// - `_padding`: Ensures 4-byte alignment
+///
 /// # Examples
 /// ```
 /// use renik::{BluetoothDeviceInfo, BluetoothConnectionState};
@@ -267,7 +289,7 @@ impl BluetoothDeviceList {
 /// assert!(connection_state.is_connected());
 /// ```
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct BluetoothConnectionState {
     /// Magic number for structure validation (0x42544353)
     magic: u32, // 4-byte aligned
@@ -334,7 +356,7 @@ impl BluetoothConnectionState {
     /// # Returns
     /// A reference to the Bluetooth device configuration
     #[must_use]
-    pub fn get_remote_device(&self) -> &BluetoothDeviceInfo {
+    pub fn remote_device(&self) -> &BluetoothDeviceInfo {
         &self.device_config
     }
 
@@ -353,7 +375,7 @@ impl BluetoothConnectionState {
     /// # Returns
     /// The link quality value (0-255)
     #[must_use]
-    pub fn get_link_quality(&self) -> u8 {
+    pub fn link_quality(&self) -> u8 {
         self.link_quality
     }
 
@@ -392,7 +414,7 @@ impl BluetoothConnectionState {
     /// # Returns
     /// Optional 6-byte Bluetooth address
     #[must_use]
-    pub fn get_remote_device_address(&self) -> Option<[u8; 6]> {
+    pub fn remote_device_address(&self) -> Option<[u8; 6]> {
         Some(self.device_config.mac_address)
     }
 
@@ -409,7 +431,7 @@ impl BluetoothConnectionState {
     /// # Returns
     /// Optional connection handle
     #[must_use]
-    pub fn get_connection_handle(&self) -> Option<ConnHandle> {
+    pub fn connection_handle(&self) -> Option<ConnHandle> {
         if self.device_config.connection_params.connection_handle.raw() == 0 {
             None
         } else {
@@ -430,7 +452,7 @@ impl BluetoothConnectionState {
     /// # Returns
     /// Link type value
     #[must_use]
-    pub fn get_link_type(&self) -> u8 {
+    pub fn link_type(&self) -> u8 {
         self.device_config.connection_params.link_type
     }
 
@@ -447,7 +469,7 @@ impl BluetoothConnectionState {
     /// # Returns
     /// The current connection phase
     #[must_use]
-    pub fn get_connection_phase(&self) -> BluetoothConnectionPhase {
+    pub fn connection_phase(&self) -> BluetoothConnectionPhase {
         // Convert u8 back to enum, default to Idle if invalid
         match self.connection_phase {
             1 => BluetoothConnectionPhase::Discovery,
@@ -475,7 +497,7 @@ impl BluetoothConnectionState {
     /// - `true` if the transition is valid
     /// - `false` if the transition is not allowed
     pub fn advance_to_phase(&mut self, next_phase: BluetoothConnectionPhase) -> bool {
-        let current = self.get_connection_phase();
+        let current = self.connection_phase();
 
         // Simple rule-based validation instead of exhaustive matching
         let valid_transition = next_phase == BluetoothConnectionPhase::Idle
@@ -519,29 +541,18 @@ impl BluetoothConnectionState {
 
 /// Connection parameters for Bluetooth devices
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct BluetoothConnectionParams {
-    /// Connection handle assigned by the controller
-    pub connection_handle: ConnHandle,
-    /// Connection interval in 1.25ms units (range: 6-3200)
-    pub connection_interval: u16,
-    /// Connection latency (range: 0-499)
-    pub connection_latency: u16,
-    /// Supervision timeout in 10ms units (range: 10-3200)
-    pub supervision_timeout: u16,
-    /// Clock accuracy (range: 0-7)
-    pub master_clock_accuracy: u8,
-    /// Link type (0x01 = ACL, 0x02 = SCO)
-    pub link_type: u8,
-    /// Encryption enabled (0x00 = disabled, 0x01 = enabled)
-    pub encryption_enabled: u8,
-    /// RSSI value (-127 to 127 dBm)
-    pub rssi: i8,
-    /// Connection timestamp (seconds since epoch)
-    pub connected_at: u32,
-    /// Last activity timestamp (seconds since epoch)
-    pub last_activity: u32,
-    /// Padding for alignment
+    connection_handle: ConnHandle,
+    connection_interval: u16,
+    connection_latency: u16,
+    supervision_timeout: u16,
+    master_clock_accuracy: u8,
+    link_type: u8,
+    encryption_enabled: u8,
+    rssi: i8,
+    connected_at: u32,
+    last_activity: u32,
     _padding: [u8; 4],
 }
 
@@ -563,33 +574,133 @@ impl Default for BluetoothConnectionParams {
     }
 }
 
+impl BluetoothConnectionParams {
+    /// Returns the connection handle assigned by the controller
+    #[must_use]
+    pub fn connection_handle(&self) -> ConnHandle {
+        self.connection_handle
+    }
+
+    /// Returns the connection interval in 1.25ms units
+    #[must_use]
+    pub fn connection_interval(&self) -> u16 {
+        self.connection_interval
+    }
+
+    /// Returns the connection latency
+    #[must_use]
+    pub fn connection_latency(&self) -> u16 {
+        self.connection_latency
+    }
+
+    /// Returns the supervision timeout in 10ms units
+    #[must_use]
+    pub fn supervision_timeout(&self) -> u16 {
+        self.supervision_timeout
+    }
+
+    /// Returns the master clock accuracy
+    #[must_use]
+    pub fn master_clock_accuracy(&self) -> u8 {
+        self.master_clock_accuracy
+    }
+
+    /// Returns the link type (0x01 = ACL, 0x02 = SCO)
+    #[must_use]
+    pub fn link_type(&self) -> u8 {
+        self.link_type
+    }
+
+    /// Returns whether encryption is enabled (0x00 = disabled, 0x01 = enabled)
+    #[must_use]
+    pub fn encryption_enabled(&self) -> u8 {
+        self.encryption_enabled
+    }
+
+    /// Returns the RSSI value (-127 to 127 dBm)
+    #[must_use]
+    pub fn rssi(&self) -> i8 {
+        self.rssi
+    }
+
+    /// Returns the connection timestamp (seconds since epoch)
+    #[must_use]
+    pub fn connected_at(&self) -> u32 {
+        self.connected_at
+    }
+
+    /// Returns the last activity timestamp (seconds since epoch)
+    #[must_use]
+    pub fn last_activity(&self) -> u32 {
+        self.last_activity
+    }
+
+    /// Sets the connection handle assigned by the controller
+    pub fn set_connection_handle(&mut self, handle: ConnHandle) {
+        self.connection_handle = handle;
+    }
+
+    /// Sets the connection interval in 1.25ms units
+    pub fn set_connection_interval(&mut self, interval: u16) {
+        self.connection_interval = interval;
+    }
+
+    /// Sets the connection latency
+    pub fn set_connection_latency(&mut self, latency: u16) {
+        self.connection_latency = latency;
+    }
+
+    /// Sets the supervision timeout in 10ms units
+    pub fn set_supervision_timeout(&mut self, timeout: u16) {
+        self.supervision_timeout = timeout;
+    }
+
+    /// Sets the master clock accuracy
+    pub fn set_master_clock_accuracy(&mut self, accuracy: u8) {
+        self.master_clock_accuracy = accuracy;
+    }
+
+    /// Sets the link type (0x01 = ACL, 0x02 = SCO)
+    pub fn set_link_type(&mut self, link_type: u8) {
+        self.link_type = link_type;
+    }
+
+    /// Sets whether encryption is enabled (0x00 = disabled, 0x01 = enabled)
+    pub fn set_encryption_enabled(&mut self, enabled: u8) {
+        self.encryption_enabled = enabled;
+    }
+
+    /// Sets the RSSI value (-127 to 127 dBm)
+    pub fn set_rssi(&mut self, rssi: i8) {
+        self.rssi = rssi;
+    }
+
+    /// Sets the connection timestamp (seconds since epoch)
+    pub fn set_connected_at(&mut self, timestamp: u32) {
+        self.connected_at = timestamp;
+    }
+
+    /// Sets the last activity timestamp (seconds since epoch)
+    pub fn set_last_activity(&mut self, timestamp: u32) {
+        self.last_activity = timestamp;
+    }
+}
+
 /// Security information for Bluetooth connections
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct BluetoothSecurityInfo {
-    /// Link key for authentication (16 bytes)
-    pub link_key: [u8; 16],
-    /// Link key type (0x00-0x07)
-    pub link_key_type: u8,
-    /// Authentication requirements
-    pub auth_requirements: u8,
-    /// IO capabilities (0x00-0x04)
-    pub io_capabilities: u8,
-    /// Security level (0x01-0x04)
-    pub security_level: u8,
-    /// PIN code length (0-16)
-    pub pin_length: u8,
-    /// Whether link key is valid
-    pub link_key_valid: u8,
-    /// Whether device was authenticated
-    pub authenticated: u8,
-    /// Whether connection is encrypted
-    pub encrypted: u8,
-    /// Whether device supports secure simple pairing
-    pub ssp_supported: u8,
-    /// Whether MITM protection is required
-    pub mitm_required: u8,
-    /// Padding for alignment
+    link_key: [u8; 16],
+    link_key_type: u8,
+    auth_requirements: u8,
+    io_capabilities: u8,
+    security_level: u8,
+    pin_length: u8,
+    link_key_valid: u8,
+    authenticated: u8,
+    encrypted: u8,
+    ssp_supported: u8,
+    mitm_required: u8,
     _padding: [u8; 6],
 }
 
@@ -612,67 +723,116 @@ impl Default for BluetoothSecurityInfo {
     }
 }
 
-/// Complete Bluetooth device information for storage
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub struct BluetoothDeviceInfo {
-    /// Magic number for validation
-    magic: u32,
-    /// Bluetooth MAC address (6 bytes)
-    mac_address: [u8; 6],
-    /// Fixed-size buffer for device name (maximum 32 bytes)
-    device_name: [u8; 32],
-    /// Actual length of the device name (0-32 bytes)
-    device_name_len: u8,
-    /// Fixed-size buffer for pairing key/PIN (maximum 64 bytes)
-    pairing_key: [u8; 64],
-    /// Actual length of the pairing key (0-64 bytes)
-    pairing_key_len: u8,
-    /// Device class of device (24-bit value)
-    class_of_device: [u8; 3],
-    /// Device type based on class (audio, input, etc.)
-    device_type: u8,
-    /// Device flags (paired, trusted, etc.)
-    flags: u8,
-    /// Padding for 4-byte alignment (1 byte to align next u32)
-    _padding1: u8,
-    /// Number of successful connections
-    connection_count: u32,
-    /// Last seen timestamp (seconds since epoch)
-    last_seen: u32,
-    /// Last successful connection timestamp
-    last_connected: u32,
-    /// Connection parameters
-    connection_params: BluetoothConnectionParams,
-    /// Security information
-    security_info: BluetoothSecurityInfo,
-    /// Vendor ID (if available)
-    vendor_id: u16,
-    /// Product ID (if available)
-    product_id: u16,
-    /// Version (if available)
-    version: u16,
-    /// Final padding for structure alignment
-    _padding2: u16,
+impl BluetoothSecurityInfo {
+    /// Returns the link key for authentication (16 bytes)
+    #[must_use]
+    pub fn link_key(&self) -> &[u8; 16] {
+        &self.link_key
+    }
+    /// Sets the link key for authentication (16 bytes)
+    pub fn set_link_key(&mut self, key: [u8; 16]) {
+        self.link_key = key;
+    }
+    #[must_use]
+    pub fn link_key_type(&self) -> u8 {
+        self.link_key_type
+    }
+    pub fn set_link_key_type(&mut self, t: u8) {
+        self.link_key_type = t;
+    }
+    #[must_use]
+    pub fn auth_requirements(&self) -> u8 {
+        self.auth_requirements
+    }
+    pub fn set_auth_requirements(&mut self, r: u8) {
+        self.auth_requirements = r;
+    }
+    #[must_use]
+    pub fn io_capabilities(&self) -> u8 {
+        self.io_capabilities
+    }
+    pub fn set_io_capabilities(&mut self, c: u8) {
+        self.io_capabilities = c;
+    }
+    #[must_use]
+    pub fn security_level(&self) -> u8 {
+        self.security_level
+    }
+    pub fn set_security_level(&mut self, l: u8) {
+        self.security_level = l;
+    }
+    #[must_use]
+    pub fn pin_length(&self) -> u8 {
+        self.pin_length
+    }
+    pub fn set_pin_length(&mut self, l: u8) {
+        self.pin_length = l;
+    }
+    #[must_use]
+    pub fn link_key_valid(&self) -> u8 {
+        self.link_key_valid
+    }
+    pub fn set_link_key_valid(&mut self, v: u8) {
+        self.link_key_valid = v;
+    }
+    #[must_use]
+    pub fn authenticated(&self) -> u8 {
+        self.authenticated
+    }
+    pub fn set_authenticated(&mut self, v: u8) {
+        self.authenticated = v;
+    }
+    #[must_use]
+    pub fn encrypted(&self) -> u8 {
+        self.encrypted
+    }
+    pub fn set_encrypted(&mut self, v: u8) {
+        self.encrypted = v;
+    }
+    #[must_use]
+    pub fn ssp_supported(&self) -> u8 {
+        self.ssp_supported
+    }
+    pub fn set_ssp_supported(&mut self, v: u8) {
+        self.ssp_supported = v;
+    }
+    #[must_use]
+    pub fn mitm_required(&self) -> u8 {
+        self.mitm_required
+    }
+    pub fn set_mitm_required(&mut self, v: u8) {
+        self.mitm_required = v;
+    }
 }
 
-// Manual implementation for Pod/Zeroable to handle alignment properly
-unsafe impl Pod for BluetoothDeviceInfo {}
-unsafe impl Zeroable for BluetoothDeviceInfo {}
+/// Complete Bluetooth device information for storage
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[repr(C, packed)]
+pub struct BluetoothDeviceInfo {
+    magic: u32,                                   // 4
+    connection_count: u32,                        // 4
+    last_seen: u32,                               // 4
+    last_connected: u32,                          // 4
+    connection_params: BluetoothConnectionParams, // 40
+    security_info: BluetoothSecurityInfo,         // 32
+    vendor_id: u16,                               // 2
+    product_id: u16,                              // 2
+    version: u16,                                 // 2
+    mac_address: [u8; 6],                         // 6
+    class_of_device: [u8; 3],                     // 3
+    device_type: u8,                              // 1
+    flags: u8,                                    // 1
+    device_name_len: u8,                          // 1
+    pairing_key_len: u8,                          // 1
+    device_name: [u8; 32],                        // 32
+    pairing_key: [u8; 64],                        // 64
+    _padding: [u8; 6],                            // 6 (to align struct to 4 bytes)
+}
 
 impl Default for BluetoothDeviceInfo {
     fn default() -> Self {
         Self {
             magic: BLUETOOTH_CONFIG_MAGIC,
-            mac_address: [0; 6],
-            device_name: [0; 32],
-            device_name_len: 0,
-            pairing_key: [0; 64],
-            pairing_key_len: 0,
-            class_of_device: [0; 3],
-            device_type: 0,
-            flags: 0,
-            _padding1: 0,
             connection_count: 0,
             last_seen: 0,
             last_connected: 0,
@@ -681,7 +841,15 @@ impl Default for BluetoothDeviceInfo {
             vendor_id: 0,
             product_id: 0,
             version: 0,
-            _padding2: 0,
+            mac_address: [0; 6],
+            class_of_device: [0; 3],
+            device_type: 0,
+            flags: 0,
+            device_name_len: 0,
+            pairing_key_len: 0,
+            device_name: [0; 32],
+            pairing_key: [0; 64],
+            _padding: [0; 6],
         }
     }
 }
@@ -805,7 +973,7 @@ impl BluetoothDeviceInfo {
     /// # Returns
     /// A slice containing only the valid pairing key bytes (length determined by `pairing_key_len`)
     #[must_use]
-    pub fn get_pairing_key(&self) -> &[u8] {
+    pub fn pairing_key(&self) -> &[u8] {
         &self.pairing_key[..self.pairing_key_len as usize]
     }
 
@@ -916,37 +1084,37 @@ impl BluetoothDeviceInfo {
 
     /// Getters
     #[must_use]
-    pub fn get_mac_address(&self) -> &[u8; 6] {
+    pub fn mac_address(&self) -> &[u8; 6] {
         &self.mac_address
     }
 
     #[must_use]
-    pub fn get_device_name(&self) -> &[u8] {
+    pub fn device_name(&self) -> &[u8] {
         &self.device_name[..self.device_name_len as usize]
     }
 
     #[must_use]
-    pub fn get_class_of_device(&self) -> &[u8; 3] {
+    pub fn class_of_device(&self) -> &[u8; 3] {
         &self.class_of_device
     }
 
     #[must_use]
-    pub fn get_device_type(&self) -> u8 {
+    pub fn device_type(&self) -> u8 {
         self.device_type
     }
 
     #[must_use]
-    pub fn get_flags(&self) -> u8 {
+    pub fn flags(&self) -> u8 {
         self.flags
     }
 
     #[must_use]
-    pub fn get_connection_params(&self) -> &BluetoothConnectionParams {
+    pub fn connection_params(&self) -> &BluetoothConnectionParams {
         &self.connection_params
     }
 
     #[must_use]
-    pub fn get_security_info(&self) -> &BluetoothSecurityInfo {
+    pub fn security_info(&self) -> &BluetoothSecurityInfo {
         &self.security_info
     }
 
@@ -968,6 +1136,39 @@ impl BluetoothDeviceInfo {
     #[must_use]
     pub fn supports_auto_reconnect(&self) -> bool {
         self.has_flag(Self::FLAG_AUTO_RECONNECT)
+    }
+
+    #[must_use]
+    pub fn vendor_id(&self) -> u16 {
+        self.vendor_id
+    }
+    #[must_use]
+    pub fn product_id(&self) -> u16 {
+        self.product_id
+    }
+    #[must_use]
+    pub fn version(&self) -> u16 {
+        self.version
+    }
+    #[must_use]
+    pub fn connection_count(&self) -> u32 {
+        self.connection_count
+    }
+    #[must_use]
+    pub fn last_seen(&self) -> u32 {
+        self.last_seen
+    }
+    #[must_use]
+    pub fn last_connected(&self) -> u32 {
+        self.last_connected
+    }
+    #[must_use]
+    pub fn device_name_len(&self) -> u8 {
+        self.device_name_len
+    }
+    #[must_use]
+    pub fn pairing_key_len(&self) -> u8 {
+        self.pairing_key_len
     }
 }
 
@@ -1056,6 +1257,23 @@ impl From<ConnHandle> for u16 {
 }
 
 /// Connection phases for multi-phase Bluetooth connection flow
+///
+/// Provides 13 distinct phases for the Bluetooth connection lifecycle:
+/// - `Idle` (0): No connection attempt
+/// - `Discovery` (1): Discovering devices
+/// - `Connecting` (2): Connecting to a device
+/// - `Connected` (3): Connected, not authenticated
+/// - `Authenticating` (4): Authentication in progress
+/// - `SettingUpEncryption` (5): Setting up encryption
+/// - `FullyConnected` (6): Connected, authenticated, encrypted
+/// - `ServiceDiscovery` (7): Service discovery in progress
+/// - `Ready` (8): Connection established with services
+/// - `Maintaining` (9): Maintenance mode
+/// - `Reconnecting` (10): Attempting reconnection
+/// - `Failed` (11): Connection failed
+/// - `Disconnecting` (12): Disconnecting
+///
+/// See `BluetoothConnectionState::is_valid_transition` for allowed transitions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BluetoothConnectionPhase {

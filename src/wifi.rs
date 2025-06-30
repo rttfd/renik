@@ -134,7 +134,7 @@ impl WifiConfig {
     /// # Returns
     /// A slice containing only the valid SSID bytes (length determined by `ssid_len`)
     #[must_use]
-    pub fn get_ssid(&self) -> &[u8] {
+    pub fn ssid(&self) -> &[u8] {
         &self.ssid[..self.ssid_len as usize]
     }
 
@@ -143,7 +143,7 @@ impl WifiConfig {
     /// # Returns
     /// A slice containing only the valid password bytes (length determined by `password_len`)
     #[must_use]
-    pub fn get_password(&self) -> &[u8] {
+    pub fn password(&self) -> &[u8] {
         &self.password[..self.password_len as usize]
     }
 }

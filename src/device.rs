@@ -131,7 +131,7 @@ impl DeviceInfo {
     /// # Returns
     /// A reference to the complete 32-byte hardware identifier array
     #[must_use]
-    pub fn get_hardware_id(&self) -> &[u8] {
+    pub fn hardware_id(&self) -> &[u8] {
         &self.hardware_id
     }
 
@@ -140,7 +140,7 @@ impl DeviceInfo {
     /// # Returns
     /// A reference to the complete 128-byte secret array
     #[must_use]
-    pub fn get_secret(&self) -> &[u8] {
+    pub fn secret(&self) -> &[u8] {
         &self.secret
     }
 }

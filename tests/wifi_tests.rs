@@ -5,8 +5,8 @@ fn test_wifi_config_creation() {
     let config = WifiConfig::new(b"TestNetwork", b"password123").unwrap();
 
     assert!(config.is_valid());
-    assert_eq!(config.get_ssid(), b"TestNetwork");
-    assert_eq!(config.get_password(), b"password123");
+    assert_eq!(config.ssid(), b"TestNetwork");
+    assert_eq!(config.password(), b"password123");
 }
 
 #[test]
@@ -14,8 +14,8 @@ fn test_wifi_config_empty_credentials() {
     let config = WifiConfig::new(b"", b"").unwrap();
 
     assert!(config.is_valid());
-    assert_eq!(config.get_ssid(), b"");
-    assert_eq!(config.get_password(), b"");
+    assert_eq!(config.ssid(), b"");
+    assert_eq!(config.password(), b"");
 }
 
 #[test]
@@ -49,8 +49,8 @@ fn test_wifi_config_max_valid_lengths() {
 
     let config = WifiConfig::new(&max_ssid, &max_password).unwrap();
     assert!(config.is_valid());
-    assert_eq!(config.get_ssid().len(), 32);
-    assert_eq!(config.get_password().len(), 64);
+    assert_eq!(config.ssid().len(), 32);
+    assert_eq!(config.password().len(), 64);
 }
 
 #[test]
@@ -61,8 +61,8 @@ fn test_wifi_config_set_credentials() {
     config
         .set_credentials(b"NewNetwork", b"new_password_123")
         .unwrap();
-    assert_eq!(config.get_ssid(), b"NewNetwork");
-    assert_eq!(config.get_password(), b"new_password_123");
+    assert_eq!(config.ssid(), b"NewNetwork");
+    assert_eq!(config.password(), b"new_password_123");
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn test_wifi_config_set_ssid_too_long() {
     ));
 
     // Original SSID should be unchanged
-    assert_eq!(config.get_ssid(), b"Initial");
+    assert_eq!(config.ssid(), b"Initial");
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn test_wifi_config_set_password_too_long() {
     ));
 
     // Original password should be unchanged
-    assert_eq!(config.get_password(), b"initial_pass");
+    assert_eq!(config.password(), b"initial_pass");
 }
 
 #[test]
@@ -100,8 +100,8 @@ fn test_wifi_config_set_credentials_together() {
     config
         .set_credentials(b"HomeNetwork", b"home_password_456")
         .unwrap();
-    assert_eq!(config.get_ssid(), b"HomeNetwork");
-    assert_eq!(config.get_password(), b"home_password_456");
+    assert_eq!(config.ssid(), b"HomeNetwork");
+    assert_eq!(config.password(), b"home_password_456");
 }
 
 #[test]
@@ -115,8 +115,8 @@ fn test_wifi_config_set_credentials_ssid_too_long() {
     ));
 
     // Original credentials should be unchanged
-    assert_eq!(config.get_ssid(), b"Initial");
-    assert_eq!(config.get_password(), b"initial_pass");
+    assert_eq!(config.ssid(), b"Initial");
+    assert_eq!(config.password(), b"initial_pass");
 }
 
 #[test]
@@ -130,8 +130,8 @@ fn test_wifi_config_set_credentials_password_too_long() {
     ));
 
     // Original credentials should be unchanged
-    assert_eq!(config.get_ssid(), b"Initial");
-    assert_eq!(config.get_password(), b"initial_pass");
+    assert_eq!(config.ssid(), b"Initial");
+    assert_eq!(config.password(), b"initial_pass");
 }
 
 #[test]
@@ -142,8 +142,8 @@ fn test_wifi_config_special_characters() {
 
     let config = WifiConfig::new(ssid_with_spaces, password_with_symbols).unwrap();
     assert!(config.is_valid());
-    assert_eq!(config.get_ssid(), ssid_with_spaces);
-    assert_eq!(config.get_password(), password_with_symbols);
+    assert_eq!(config.ssid(), ssid_with_spaces);
+    assert_eq!(config.password(), password_with_symbols);
 }
 
 #[test]
@@ -155,8 +155,8 @@ fn test_wifi_config_unicode_handling() {
     if unicode_ssid.len() <= 32 && unicode_password.len() <= 64 {
         let config = WifiConfig::new(unicode_ssid, unicode_password).unwrap();
         assert!(config.is_valid());
-        assert_eq!(config.get_ssid(), unicode_ssid);
-        assert_eq!(config.get_password(), unicode_password);
+        assert_eq!(config.ssid(), unicode_ssid);
+        assert_eq!(config.password(), unicode_password);
     }
 }
 
@@ -165,8 +165,8 @@ fn test_wifi_config_default() {
     let config = WifiConfig::default();
 
     assert!(config.is_valid());
-    assert_eq!(config.get_ssid(), b"");
-    assert_eq!(config.get_password(), b"");
+    assert_eq!(config.ssid(), b"");
+    assert_eq!(config.password(), b"");
 }
 
 #[test]
@@ -203,8 +203,8 @@ fn test_wifi_config_clear_credentials() {
 
     // Clear credentials by setting empty values
     config.set_credentials(b"", b"").unwrap();
-    assert_eq!(config.get_ssid(), b"");
-    assert_eq!(config.get_password(), b"");
+    assert_eq!(config.ssid(), b"");
+    assert_eq!(config.password(), b"");
     assert!(config.is_valid()); // Should still be valid
 }
 
@@ -213,12 +213,12 @@ fn test_wifi_config_boundary_conditions() {
     // Test exactly at the boundary (32 bytes for SSID)
     let ssid_32_bytes = vec![b'A'; 32];
     let config = WifiConfig::new(&ssid_32_bytes, b"password").unwrap();
-    assert_eq!(config.get_ssid().len(), 32);
+    assert_eq!(config.ssid().len(), 32);
 
     // Test exactly at the boundary (64 bytes for password)
     let password_64_bytes = vec![b'B'; 64];
     let config = WifiConfig::new(b"network", &password_64_bytes).unwrap();
-    assert_eq!(config.get_password().len(), 64);
+    assert_eq!(config.password().len(), 64);
 
     // Test one byte over the boundary should fail
     let ssid_33_bytes = vec![b'C'; 33];

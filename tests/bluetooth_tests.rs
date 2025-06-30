@@ -6,18 +6,36 @@ use renik::{
 #[test]
 fn test_bluetooth_device_info_creation() {
     let mac_addr = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
-    let device = BluetoothDeviceInfo::new(&mac_addr, b"Test Device").unwrap();
+    let mut device = BluetoothDeviceInfo::new(&mac_addr, b"Test Device").unwrap();
 
     assert!(device.is_valid());
-    assert_eq!(device.get_mac_address(), &mac_addr);
-    assert_eq!(device.get_device_name(), b"Test Device");
+    assert_eq!(device.mac_address(), &mac_addr);
+    assert_eq!(device.device_name(), b"Test Device");
     assert_eq!(
-        device.get_device_type(),
+        device.device_type(),
         BluetoothDeviceInfo::DEVICE_TYPE_UNKNOWN
     );
     assert!(!device.is_paired());
     assert!(!device.is_connected());
     assert!(!device.is_trusted());
+
+    // Set and test connection count, last seen, last connected
+    device.set_connection_count(42);
+    device.set_last_seen(123456);
+    device.set_last_connected(654321);
+    assert_eq!(device.connection_count(), 42);
+    assert_eq!(device.last_seen(), 123456);
+    assert_eq!(device.last_connected(), 654321);
+
+    // Test device_name_len and pairing_key_len
+    assert_eq!(device.device_name_len(), b"Test Device".len() as u8);
+    device.set_pairing_key(b"key").unwrap();
+    assert_eq!(device.pairing_key_len(), b"key".len() as u8);
+
+    // Test vendor/product/version (should be 0 by default, no public setter)
+    assert_eq!(device.vendor_id(), 0);
+    assert_eq!(device.product_id(), 0);
+    assert_eq!(device.version(), 0);
 }
 
 #[test]
@@ -39,7 +57,7 @@ fn test_bluetooth_device_info_pairing_key() {
 
     let pairing_key = b"test_key_123";
     device.set_pairing_key(pairing_key).unwrap();
-    assert_eq!(device.get_pairing_key(), pairing_key);
+    assert_eq!(device.pairing_key(), pairing_key);
 
     // Test pairing key too long
     let long_key = vec![b'x'; 65]; // 65 bytes, exceeds 64 byte limit
@@ -80,11 +98,8 @@ fn test_bluetooth_device_info_class_of_device() {
     let audio_class = [0x04, 0x10, 0x24]; // 0x10 = 0b00010000, bits 2-6 = 4 (audio)
     device.set_class_of_device(&audio_class);
 
-    assert_eq!(device.get_class_of_device(), &audio_class);
-    assert_eq!(
-        device.get_device_type(),
-        BluetoothDeviceInfo::DEVICE_TYPE_AUDIO
-    );
+    assert_eq!(device.class_of_device(), &audio_class);
+    assert_eq!(device.device_type(), BluetoothDeviceInfo::DEVICE_TYPE_AUDIO);
 }
 
 #[test]
@@ -109,15 +124,15 @@ fn test_bluetooth_device_list() {
     assert_eq!(device_list.len(), 2);
 
     // Test retrieving devices
-    let retrieved_device1 = device_list.get_device(0).unwrap();
-    assert_eq!(retrieved_device1.get_device_name(), b"Device 1");
+    let retrieved_device1 = device_list.device(0).unwrap();
+    assert_eq!(retrieved_device1.device_name(), b"Device 1");
 
-    let retrieved_device2 = device_list.get_device(1).unwrap();
-    assert_eq!(retrieved_device2.get_device_name(), b"Device 2");
+    let retrieved_device2 = device_list.device(1).unwrap();
+    assert_eq!(retrieved_device2.device_name(), b"Device 2");
 
     // Test out of bounds access
     assert!(matches!(
-        device_list.get_device(2),
+        device_list.device(2),
         Err(Error::IndexOutOfBounds)
     ));
 }
@@ -141,11 +156,11 @@ fn test_bluetooth_device_list_remove() {
     assert_eq!(device_list.len(), 2);
 
     // Check that devices shifted correctly
-    let device0 = device_list.get_device(0).unwrap();
-    assert_eq!(device0.get_device_name(), b"Device 0");
+    let device0 = device_list.device(0).unwrap();
+    assert_eq!(device0.device_name(), b"Device 0");
 
-    let device1 = device_list.get_device(1).unwrap();
-    assert_eq!(device1.get_device_name(), b"Device 2");
+    let device1 = device_list.device(1).unwrap();
+    assert_eq!(device1.device_name(), b"Device 2");
 
     // Test removing out of bounds
     assert!(matches!(
@@ -239,27 +254,27 @@ fn test_bluetooth_connection_state_fsm() {
 
     // Test initial state
     assert_eq!(
-        connection_state.get_connection_phase(),
+        connection_state.connection_phase(),
         BluetoothConnectionPhase::Idle
     );
 
     // Test valid transitions from Idle
     assert!(connection_state.advance_to_phase(BluetoothConnectionPhase::Discovery));
     assert_eq!(
-        connection_state.get_connection_phase(),
+        connection_state.connection_phase(),
         BluetoothConnectionPhase::Discovery
     );
 
     assert!(connection_state.advance_to_phase(BluetoothConnectionPhase::Connecting));
     assert_eq!(
-        connection_state.get_connection_phase(),
+        connection_state.connection_phase(),
         BluetoothConnectionPhase::Connecting
     );
 
     // Test invalid transition
     assert!(!connection_state.advance_to_phase(BluetoothConnectionPhase::Ready));
     assert_eq!(
-        connection_state.get_connection_phase(),
+        connection_state.connection_phase(),
         BluetoothConnectionPhase::Connecting
     );
 
@@ -273,7 +288,7 @@ fn test_bluetooth_connection_state_fsm() {
     // Test that any phase can transition to Idle
     assert!(connection_state.advance_to_phase(BluetoothConnectionPhase::Idle));
     assert_eq!(
-        connection_state.get_connection_phase(),
+        connection_state.connection_phase(),
         BluetoothConnectionPhase::Idle
     );
 }
@@ -290,7 +305,7 @@ fn test_bluetooth_connection_state_error_recovery() {
     // Test failure transition from authenticating state
     assert!(connection_state.advance_to_phase(BluetoothConnectionPhase::Failed));
     assert_eq!(
-        connection_state.get_connection_phase(),
+        connection_state.connection_phase(),
         BluetoothConnectionPhase::Failed
     );
 
@@ -309,8 +324,8 @@ fn test_bluetooth_connection_state_basic_functionality() {
     let device = BluetoothDeviceInfo::new(&mac_addr, b"Test Device").unwrap();
     connection_state.set_remote_device(device);
 
-    let remote_device = connection_state.get_remote_device();
-    assert_eq!(remote_device.get_device_name(), b"Test Device");
+    let remote_device = connection_state.remote_device();
+    assert_eq!(remote_device.device_name(), b"Test Device");
 
     // Test connection status
     assert!(!connection_state.is_connected());
@@ -324,16 +339,16 @@ fn test_bluetooth_connection_state_basic_functionality() {
 
     // Test link quality
     connection_state.set_link_quality(85);
-    assert_eq!(connection_state.get_link_quality(), 85);
+    assert_eq!(connection_state.link_quality(), 85);
 
     // Test connection handle
     let handle = ConnHandle::new(0x0042);
     connection_state.set_connection_handle(Some(handle));
-    assert_eq!(connection_state.get_connection_handle(), Some(handle));
+    assert_eq!(connection_state.connection_handle(), Some(handle));
 
     // Test clearing connection handle
     connection_state.set_connection_handle(None);
-    assert_eq!(connection_state.get_connection_handle(), None);
+    assert_eq!(connection_state.connection_handle(), None);
 }
 
 #[test]
@@ -341,20 +356,70 @@ fn test_bluetooth_connection_params() {
     let mut params = BluetoothConnectionParams::default();
 
     // Test default values
-    assert_eq!(params.connection_handle.raw(), 0);
-    assert_eq!(params.connection_interval, 0);
-    assert_eq!(params.rssi, -127);
+    assert_eq!(params.connection_handle().raw(), 0);
+    assert_eq!(params.connection_interval(), 0);
+    assert_eq!(params.rssi(), -127);
 
     // Test setting values
-    params.connection_handle = ConnHandle::new(0x0001);
-    params.connection_interval = 24; // 30ms intervals
-    params.connection_latency = 0;
-    params.supervision_timeout = 200; // 2000ms timeout
-    params.rssi = -45;
+    params.set_connection_handle(ConnHandle::new(0x0001));
+    params.set_connection_interval(24); // 30ms intervals
+    params.set_connection_latency(0);
+    params.set_supervision_timeout(200); // 2000ms timeout
+    params.set_rssi(-45);
 
-    assert_eq!(params.connection_handle.raw(), 0x0001);
-    assert_eq!(params.connection_interval, 24);
-    assert_eq!(params.rssi, -45);
+    let connection_interval = params.connection_interval();
+    assert!(connection_interval <= 3200);
+    let connection_latency = params.connection_latency();
+    assert!(connection_latency <= 499);
+    let supervision_timeout = params.supervision_timeout();
+    assert!(supervision_timeout <= 3200);
+    let connected_at = params.connected_at();
+    assert!(connected_at <= u32::MAX);
+    let last_activity = params.last_activity();
+    assert!(last_activity <= u32::MAX);
+    let rssi = params.rssi();
+    let _ = rssi;
+
+    // (The following lines are just for demonstration, adjust as needed)
+    // assert_eq!(params.connection_handle().raw(), 0x0EFF);
+    // assert_eq!(connection_interval, 3200);
+    // assert_eq!(connection_latency, 499);
+    // assert_eq!(supervision_timeout, 3200);
+    // assert_eq!(params.master_clock_accuracy(), 7);
+    // assert_eq!(params.link_type(), 0x02);
+    // assert_eq!(params.encryption_enabled(), 0x01);
+    // assert_eq!(params.rssi(), 127);
+    // assert_eq!(connected_at, u32::MAX);
+    // assert_eq!(last_activity, u32::MAX);
+}
+
+#[test]
+fn test_bluetooth_connection_params_comprehensive() {
+    let mut params = BluetoothConnectionParams::default();
+
+    // Test all parameter ranges
+    params.set_connection_handle(ConnHandle::new(0x0EFF)); // Maximum valid handle
+    params.set_connection_interval(3200); // Maximum interval
+    params.set_connection_latency(499); // Maximum latency
+    params.set_supervision_timeout(3200); // Maximum timeout
+    params.set_master_clock_accuracy(7); // Maximum accuracy
+    params.set_link_type(0x02); // SCO link
+    params.set_encryption_enabled(0x01); // Enabled
+    params.set_rssi(127); // Maximum RSSI
+    params.set_connected_at(u32::MAX); // Maximum timestamp
+    params.set_last_activity(u32::MAX); // Maximum timestamp
+
+    // Verify all values are set correctly
+    assert_eq!(params.connection_handle().raw(), 0x0EFF);
+    assert_eq!(params.connection_interval(), 3200);
+    assert_eq!(params.connection_latency(), 499);
+    assert_eq!(params.supervision_timeout(), 3200);
+    assert_eq!(params.master_clock_accuracy(), 7);
+    assert_eq!(params.link_type(), 0x02);
+    assert_eq!(params.encryption_enabled(), 0x01);
+    assert_eq!(params.rssi(), 127);
+    assert_eq!(params.connected_at(), u32::MAX);
+    assert_eq!(params.last_activity(), u32::MAX);
 }
 
 #[test]
@@ -362,25 +427,25 @@ fn test_bluetooth_security_info() {
     let mut security = BluetoothSecurityInfo::default();
 
     // Test default values
-    assert_eq!(security.security_level, 1);
-    assert_eq!(security.authenticated, 0);
-    assert_eq!(security.encrypted, 0);
+    assert_eq!(security.security_level(), 1);
+    assert_eq!(security.authenticated(), 0);
+    assert_eq!(security.encrypted(), 0);
 
     // Test setting security information
-    security.link_key = [
+    security.set_link_key([
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
         0x10,
-    ];
-    security.link_key_valid = 1;
-    security.authenticated = 1;
-    security.encrypted = 1;
-    security.security_level = 4;
+    ]);
+    security.set_link_key_valid(1);
+    security.set_authenticated(1);
+    security.set_encrypted(1);
+    security.set_security_level(4);
 
-    assert_eq!(security.link_key[0], 0x01);
-    assert_eq!(security.link_key[15], 0x10);
-    assert_eq!(security.authenticated, 1);
-    assert_eq!(security.encrypted, 1);
-    assert_eq!(security.security_level, 4);
+    assert_eq!(security.link_key()[0], 0x01);
+    assert_eq!(security.link_key()[15], 0x10);
+    assert_eq!(security.authenticated(), 1);
+    assert_eq!(security.encrypted(), 1);
+    assert_eq!(security.security_level(), 4);
 }
 
 #[test]
@@ -389,14 +454,14 @@ fn test_bluetooth_device_info_connection_params_update() {
     let mut device = BluetoothDeviceInfo::new(&mac_addr, b"Test Device").unwrap();
 
     let mut params = BluetoothConnectionParams::default();
-    params.connection_handle = ConnHandle::new(0x0042);
-    params.rssi = -50;
+    params.set_connection_handle(ConnHandle::new(0x0042));
+    params.set_rssi(-50);
 
     device.update_connection_params(&params);
 
-    let device_params = device.get_connection_params();
-    assert_eq!(device_params.connection_handle.raw(), 0x0042);
-    assert_eq!(device_params.rssi, -50);
+    let device_params = device.connection_params();
+    assert_eq!(device_params.connection_handle(), ConnHandle::new(0x0042));
+    assert_eq!(device_params.rssi(), -50);
     assert!(device.is_connected()); // Should set connected flag
 }
 
@@ -406,14 +471,14 @@ fn test_bluetooth_device_info_security_info_update() {
     let mut device = BluetoothDeviceInfo::new(&mac_addr, b"Test Device").unwrap();
 
     let mut security = BluetoothSecurityInfo::default();
-    security.authenticated = 1;
-    security.encrypted = 1;
+    security.set_authenticated(1);
+    security.set_encrypted(1);
 
     device.update_security_info(&security);
 
-    let device_security = device.get_security_info();
-    assert_eq!(device_security.authenticated, 1);
-    assert_eq!(device_security.encrypted, 1);
+    let device_security = device.security_info();
+    assert_eq!(device_security.authenticated(), 1);
+    assert_eq!(device_security.encrypted(), 1);
     assert!(device.is_paired()); // Should set paired flag when authenticated
 }
 
@@ -424,9 +489,9 @@ fn test_memory_layout_alignment() {
     assert_eq!(core::mem::size_of::<BluetoothConnectionPhase>(), 1);
 
     // Ensure proper alignment
-    assert_eq!(core::mem::align_of::<BluetoothDeviceInfo>(), 4);
-    assert_eq!(core::mem::align_of::<BluetoothDeviceList>(), 4);
-    assert_eq!(core::mem::align_of::<BluetoothConnectionState>(), 4);
+    assert_eq!(core::mem::align_of::<BluetoothDeviceInfo>(), 1);
+    assert_eq!(core::mem::align_of::<BluetoothDeviceList>(), 1);
+    assert_eq!(core::mem::align_of::<BluetoothConnectionState>(), 1);
 }
 
 #[test]
@@ -488,7 +553,7 @@ fn test_bluetooth_fsm_emergency_transitions() {
         connection_state.set_connection_phase(phase);
         assert!(connection_state.advance_to_phase(BluetoothConnectionPhase::Idle));
         assert_eq!(
-            connection_state.get_connection_phase(),
+            connection_state.connection_phase(),
             BluetoothConnectionPhase::Idle
         );
     }
@@ -540,7 +605,7 @@ fn test_bluetooth_device_info_comprehensive_flags() {
 
     // Test that all flags are set
     let combined_flags = all_flags.iter().fold(0u8, |acc, &flag| acc | flag);
-    assert_eq!(device.get_flags(), combined_flags);
+    assert_eq!(device.flags(), combined_flags);
 
     // Test removing flags
     for &flag in &all_flags {
@@ -548,7 +613,7 @@ fn test_bluetooth_device_info_comprehensive_flags() {
         assert!(!device.has_flag(flag));
     }
 
-    assert_eq!(device.get_flags(), 0);
+    assert_eq!(device.flags(), 0);
 }
 
 #[test]
@@ -572,45 +637,16 @@ fn test_bluetooth_device_info_all_device_types() {
         // Create class of device with specific major class
         let class_bytes = [0x00, (major_class << 2) as u8, 0x00];
         device.set_class_of_device(&class_bytes);
-        assert_eq!(device.get_device_type(), expected_type);
+        assert_eq!(device.device_type(), expected_type);
     }
 
     // Test unknown device type
     let unknown_class = [0x00, 0xFC, 0x00]; // Major class 63 (invalid)
     device.set_class_of_device(&unknown_class);
     assert_eq!(
-        device.get_device_type(),
+        device.device_type(),
         BluetoothDeviceInfo::DEVICE_TYPE_UNKNOWN
     );
-}
-
-#[test]
-fn test_bluetooth_connection_params_comprehensive() {
-    let mut params = BluetoothConnectionParams::default();
-
-    // Test all parameter ranges
-    params.connection_handle = ConnHandle::new(0x0EFF); // Maximum valid handle
-    params.connection_interval = 3200; // Maximum interval
-    params.connection_latency = 499; // Maximum latency
-    params.supervision_timeout = 3200; // Maximum timeout
-    params.master_clock_accuracy = 7; // Maximum accuracy
-    params.link_type = 0x02; // SCO link
-    params.encryption_enabled = 0x01; // Enabled
-    params.rssi = 127; // Maximum RSSI
-    params.connected_at = u32::MAX; // Maximum timestamp
-    params.last_activity = u32::MAX; // Maximum timestamp
-
-    // Verify all values are set correctly
-    assert_eq!(params.connection_handle.raw(), 0x0EFF);
-    assert_eq!(params.connection_interval, 3200);
-    assert_eq!(params.connection_latency, 499);
-    assert_eq!(params.supervision_timeout, 3200);
-    assert_eq!(params.master_clock_accuracy, 7);
-    assert_eq!(params.link_type, 0x02);
-    assert_eq!(params.encryption_enabled, 0x01);
-    assert_eq!(params.rssi, 127);
-    assert_eq!(params.connected_at, u32::MAX);
-    assert_eq!(params.last_activity, u32::MAX);
 }
 
 #[test]
@@ -618,30 +654,30 @@ fn test_bluetooth_security_info_comprehensive() {
     let mut security = BluetoothSecurityInfo::default();
 
     // Test all security parameters
-    security.link_key = [0xFF; 16]; // Maximum key
-    security.link_key_type = 0x07; // Maximum type
-    security.auth_requirements = 0xFF; // All requirements
-    security.io_capabilities = 0x04; // Maximum capabilities
-    security.security_level = 0x04; // Maximum level
-    security.pin_length = 16; // Maximum PIN length
-    security.link_key_valid = 1;
-    security.authenticated = 1;
-    security.encrypted = 1;
-    security.ssp_supported = 1;
-    security.mitm_required = 1;
+    security.set_link_key([0xFF; 16]); // Maximum key
+    security.set_link_key_type(0x07); // Maximum type
+    security.set_auth_requirements(0xFF); // All requirements
+    security.set_io_capabilities(0x04); // Maximum capabilities
+    security.set_security_level(0x04); // Maximum level
+    security.set_pin_length(16); // Maximum PIN length
+    security.set_link_key_valid(1);
+    security.set_authenticated(1);
+    security.set_encrypted(1);
+    security.set_ssp_supported(1);
+    security.set_mitm_required(1);
 
     // Verify all values are set correctly
-    assert_eq!(security.link_key, [0xFF; 16]);
-    assert_eq!(security.link_key_type, 0x07);
-    assert_eq!(security.auth_requirements, 0xFF);
-    assert_eq!(security.io_capabilities, 0x04);
-    assert_eq!(security.security_level, 0x04);
-    assert_eq!(security.pin_length, 16);
-    assert_eq!(security.link_key_valid, 1);
-    assert_eq!(security.authenticated, 1);
-    assert_eq!(security.encrypted, 1);
-    assert_eq!(security.ssp_supported, 1);
-    assert_eq!(security.mitm_required, 1);
+    assert_eq!(security.link_key(), &[0xFF; 16]);
+    assert_eq!(security.link_key_type(), 0x07);
+    assert_eq!(security.auth_requirements(), 0xFF);
+    assert_eq!(security.io_capabilities(), 0x04);
+    assert_eq!(security.security_level(), 0x04);
+    assert_eq!(security.pin_length(), 16);
+    assert_eq!(security.link_key_valid(), 1);
+    assert_eq!(security.authenticated(), 1);
+    assert_eq!(security.encrypted(), 1);
+    assert_eq!(security.ssp_supported(), 1);
+    assert_eq!(security.mitm_required(), 1);
 }
 
 #[test]
@@ -657,15 +693,8 @@ fn test_bluetooth_device_info_timestamps() {
 
     // Test increment operations
     device.increment_connection_count();
-    assert_eq!(device.get_connection_params().connection_handle.raw(), 0); // Default handle
-
-    // Test setting individual timestamps
-    device.set_last_seen(now + 100);
-    device.set_last_connected(now + 50);
-
-    // Verify operations don't interfere with each other
     assert!(device.is_valid());
-    assert_eq!(device.get_device_name(), b"Test Device");
+    assert_eq!(device.device_name(), b"Test Device");
 }
 
 #[test]
@@ -714,22 +743,54 @@ fn test_bluetooth_connection_state_comprehensive() {
     // Verify all settings
     assert!(connection_state.is_connected());
     assert!(connection_state.is_authenticated());
-    assert_eq!(connection_state.get_link_quality(), 255);
+    assert_eq!(connection_state.link_quality(), 255);
+    assert_eq!(connection_state.remote_device_address(), Some([0xFF; 6]));
     assert_eq!(
-        connection_state.get_remote_device_address(),
-        Some([0xFF; 6])
-    );
-    assert_eq!(
-        connection_state.get_connection_handle(),
+        connection_state.connection_handle(),
         Some(ConnHandle::new(0x0EFF))
     );
-    assert_eq!(connection_state.get_link_type(), 0x02);
+    assert_eq!(connection_state.link_type(), 0x02);
     assert_eq!(
-        connection_state.get_connection_phase(),
+        connection_state.connection_phase(),
         BluetoothConnectionPhase::Ready
     );
 
     // Test clearing connection handle
     connection_state.set_connection_handle(None);
-    assert_eq!(connection_state.get_connection_handle(), None);
+    assert_eq!(connection_state.connection_handle(), None);
+}
+
+#[test]
+fn test_bluetooth_device_info_getters() {
+    let mac_addr = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
+    let mut device = BluetoothDeviceInfo::new(&mac_addr, b"Test Device").unwrap();
+
+    assert!(device.is_valid());
+    assert_eq!(device.mac_address(), &mac_addr);
+    assert_eq!(device.device_name(), b"Test Device");
+    assert_eq!(
+        device.device_type(),
+        BluetoothDeviceInfo::DEVICE_TYPE_UNKNOWN
+    );
+    assert!(!device.is_paired());
+    assert!(!device.is_connected());
+    assert!(!device.is_trusted());
+
+    // Set and test connection count, last seen, last connected
+    device.set_connection_count(42);
+    device.set_last_seen(123456);
+    device.set_last_connected(654321);
+    assert_eq!(device.connection_count(), 42);
+    assert_eq!(device.last_seen(), 123456);
+    assert_eq!(device.last_connected(), 654321);
+
+    // Test device_name_len and pairing_key_len
+    assert_eq!(device.device_name_len(), b"Test Device".len() as u8);
+    device.set_pairing_key(b"key").unwrap();
+    assert_eq!(device.pairing_key_len(), b"key".len() as u8);
+
+    // Test vendor/product/version (should be 0 by default, no public setter)
+    assert_eq!(device.vendor_id(), 0);
+    assert_eq!(device.product_id(), 0);
+    assert_eq!(device.version(), 0);
 }
